@@ -2,11 +2,12 @@
 import tkinter as tk
 from utils.colors import COLORS
 from gui.landing_page import LandingPage
-from gui.login_page import LoginPage        # <--- 1. Import Login
+from gui.login_page import LoginPage
 from gui.dashboard_page import DashboardPage
 from gui.borrow_page import BorrowPage
 from gui.reports_page import ReportsPage
 from gui.equipment_page import EquipmentPage
+from gui.profile_page import ProfilePage # <--- 1. Import this
 
 class TrackLabApp:
     def __init__(self, root):
@@ -23,11 +24,11 @@ class TrackLabApp:
         for widget in self.container.winfo_children():
             widget.destroy()
 
+    # --- Navigation Functions ---
     def show_landing_page(self):
         self.clear_container()
         LandingPage(self.container, self).pack(fill="both", expand=True)
 
-    # --- 2. Add this Function ---
     def show_login_page(self):
         self.clear_container()
         LoginPage(self.container, self).pack(fill="both", expand=True)
@@ -47,3 +48,8 @@ class TrackLabApp:
     def show_equipment_page(self):
         self.clear_container()
         EquipmentPage(self.container, self).pack(fill="both", expand=True)
+
+    # --- 2. Add this function ---
+    def show_profile_page(self):
+        self.clear_container()
+        ProfilePage(self.container, self).pack(fill="both", expand=True)

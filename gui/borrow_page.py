@@ -12,35 +12,39 @@ class BorrowPage(tk.Frame):
         self.controller = controller
         self.build_ui()
 
-    # =============================================================
-    # UI LAYOUT FIXED: Borrow Form LEFT | Item Picker RIGHT PANEL
-    # =============================================================
     def build_ui(self):
         # --- NAV BAR ---
         nav_bar = tk.Frame(self, bg="white", height=60, padx=20)
         nav_bar.pack(side="top", fill="x")
 
-        tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"),
+        tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"), 
                  fg=COLORS["primary_green"], bg="white").pack(side="left", pady=15)
 
-        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports"]
+        # === FIXED NAVIGATION LOGIC ===
+        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports", "Profile"]
         for item in nav_items:
             if item == "Dashboard":
                 cmd = self.controller.show_dashboard
+            elif item == "Equipment":
+                cmd = self.controller.show_equipment_page
             elif item == "Borrow":
-                cmd = None
+                cmd = None # Already here
             elif item == "Reports":
-                cmd = self.controller.show_reports  # <--- FIX THIS LINE
+                cmd = self.controller.show_reports
+            elif item == "Profile":
+                cmd = self.controller.show_profile_page
             else:
-                cmd = lambda x=item: print(f"Clicked {x}")
+                cmd = None
 
             color = COLORS["primary_green"] if item == "Borrow" else "#555"
             font_style = ("Arial", 10, "bold") if item == "Borrow" else ("Arial", 10)
 
-            tk.Button(nav_bar, text=item, bg="white", fg=color,
-                      relief="flat", font=font_style, command=cmd
-            ).pack(side="right", padx=10)
+            tk.Button(nav_bar, text=item, bg="white", fg=color, relief="flat", 
+                      font=font_style, command=cmd).pack(side="right", padx=10)
 
+        # ... (Keep the rest of your Borrow Page code below) ...
+        # COPY THE REST OF YOUR BORROW PAGE CODE HERE (main content, split, helpers etc)
+        # This part just replaced the top nav bar logic.
         # --------------------- MAIN CONTENT ---------------------
         main = tk.Frame(self, bg=COLORS["bg_light"])
         main.pack(fill="both", expand=True, padx=40, pady=20)

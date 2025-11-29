@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from utils.colors import COLORS
-from database.mock_db import INVENTORY_DB
+from database.mock_db import INVENTORY_DB, RETURN_HISTORY
 from gui.popups import AddItemPopup
 
 class EquipmentPage(tk.Frame):
@@ -12,181 +12,140 @@ class EquipmentPage(tk.Frame):
         self.build_ui()
 
     def build_ui(self):
-        # =================================================================
-        # 1. TOP NAVIGATION BAR
-        # =================================================================
+        # --- NAV BAR ---
         nav_bar = tk.Frame(self, bg="white", height=60, padx=20)
         nav_bar.pack(side="top", fill="x", pady=(0, 2))
 
-        tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"),
+        tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"), 
                  fg=COLORS["primary_green"], bg="white").pack(side="left", pady=15)
 
-        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports"]
+        # === FIXED NAVIGATION LOGIC ===
+        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports", "Profile"]
         for item in nav_items:
             if item == "Dashboard":
                 cmd = self.controller.show_dashboard
+            elif item == "Equipment":
+                cmd = None # Already here
             elif item == "Borrow":
                 cmd = self.controller.show_borrow_page
             elif item == "Reports":
                 cmd = self.controller.show_reports
-            elif item == "Equipment":
-                cmd = None # Already here
+            elif item == "Profile":
+                cmd = self.controller.show_profile_page
             else:
-                cmd = lambda x=item: print(f"Clicked {x}")
+                cmd = None
 
-            # Active State Styling
+            # Active State
             color = COLORS["primary_green"] if item == "Equipment" else "#555"
-            font_style = ("Arial", 10, "bold") if item == "Equipment" else ("Arial", 10)
+            font = ("Arial", 10, "bold") if item == "Equipment" else ("Arial", 10)
+            tk.Button(nav_bar, text=item, bg="white", fg=color, relief="flat", 
+                      font=font, command=cmd).pack(side="right", padx=10, pady=15)
 
-            tk.Button(nav_bar, text=item, bg="white", fg=color,
-                      relief="flat", font=font_style, command=cmd
-            ).pack(side="right", padx=10, pady=15)
-
-        # =================================================================
-        # 2. MAIN CONTENT
-        # =================================================================
+        # ... (Keep the rest of your tabs and main content) ...
+        # If you need the rest of the code, use the version from the previous "Tabs" response.
+        # COPY EVERYTHING BELOW THIS LINE FROM THE PREVIOUS 'tabs' RESPONSE FOR equipment_page.py
+        # --- MAIN LAYOUT ---
         main_content = tk.Frame(self, bg=COLORS["bg_light"])
-        main_content.pack(fill="both", expand=True, padx=40, pady=20)
+        main_content.pack(fill="both", expand=True, padx=30, pady=20)
 
-        # Header
-        tk.Label(main_content, text="Equipment Inventory", font=("Arial", 22, "bold"),
+        tk.Label(main_content, text="Equipment Management", font=("Arial", 22, "bold"), 
                  bg=COLORS["bg_light"], fg=COLORS["text_dark"]).pack(anchor="w", pady=(0, 15))
 
-        # ------------------------------------------------------
-        # CONTROL CARD (Search, Filter, Add)
-        # ------------------------------------------------------
-        control_card = tk.Frame(main_content, bg="white", padx=20, pady=20)
-        control_card.pack(fill="x", pady=(0, 15))
-        control_card.config(highlightbackground="#E0E0E0", highlightthickness=1)
+        style = ttk.Style()
+        style.configure("TNotebook", background=COLORS["bg_light"])
+        style.configure("TNotebook.Tab", font=("Arial", 10, "bold"), padding=[15, 5])
 
-        # Grid Layout for Controls
-        control_card.columnconfigure(2, weight=1) # Spacer column
+        notebook = ttk.Notebook(main_content)
+        notebook.pack(fill="both", expand=True)
 
-        # Search Bar
-        tk.Label(control_card, text="Search:", bg="white", font=("Arial", 9, "bold"), fg="#555").grid(row=0, column=0, sticky="w")
+        self.tab_inventory = tk.Frame(notebook, bg="white", padx=20, pady=20)
+        self.tab_returns = tk.Frame(notebook, bg="white", padx=20, pady=20)
+
+        notebook.add(self.tab_inventory, text="  Current Inventory  ")
+        notebook.add(self.tab_returns, text="  Returned Items (History)  ")
+
+        self.build_inventory_tab()
+        self.build_returns_tab()
+
+    def build_inventory_tab(self):
+        ctrl = tk.Frame(self.tab_inventory, bg="white")
+        ctrl.pack(fill="x", pady=(0, 15))
+
+        tk.Label(ctrl, text="Search:", bg="white", font=("Arial", 9, "bold")).pack(side="left")
         self.search_var = tk.StringVar()
-        self.search_var.trace("w", self.on_search_change) # Real-time search
-        search_entry = ttk.Entry(control_card, textvariable=self.search_var, width=30)
-        search_entry.grid(row=1, column=0, sticky="w", ipady=3, padx=(0, 20))
+        self.search_var.trace("w", self.refresh_inventory)
+        ttk.Entry(ctrl, textvariable=self.search_var, width=25).pack(side="left", padx=10)
 
-        # Filter Dropdown
-        tk.Label(control_card, text="Status:", bg="white", font=("Arial", 9, "bold"), fg="#555").grid(row=0, column=1, sticky="w")
-        self.filter_cb = ttk.Combobox(control_card, values=["All", "Available", "Borrowed", "Damaged", "Out of Stock"], state="readonly", width=20)
-        self.filter_cb.current(0)
-        self.filter_cb.grid(row=1, column=1, sticky="w", ipady=3)
-        self.filter_cb.bind("<<ComboboxSelected>>", self.on_search_change)
+        tk.Button(ctrl, text="+ Add Equipment", bg=COLORS["primary_green"], fg="white", 
+                  relief="flat", font=("Arial", 9, "bold"), padx=15,
+                  command=lambda: AddItemPopup(self.winfo_toplevel())).pack(side="right")
 
-        # Add Button (Right aligned)
-        tk.Button(control_card, text="+ Add New Equipment", bg=COLORS["primary_green"], fg="white",
-                  relief="flat", font=("Arial", 10, "bold"), padx=20, pady=5,
-                  command=lambda: AddItemPopup(self.winfo_toplevel())
-                  ).grid(row=1, column=3, sticky="e")
-
-        # ------------------------------------------------------
-        # TABLE AREA
-        # ------------------------------------------------------
-        table_card = tk.Frame(main_content, bg="white", padx=20, pady=20)
-        table_card.pack(fill="both", expand=True)
-        table_card.config(highlightbackground="#E0E0E0", highlightthickness=1)
-
-        # Action Toolbar (Above Table)
-        action_bar = tk.Frame(table_card, bg="white")
-        action_bar.pack(fill="x", pady=(0, 10))
-        
-        tk.Label(action_bar, text="Select a row to perform actions:", bg="white", fg="#777", font=("Arial", 9, "italic")).pack(side="left")
-        
-        tk.Button(action_bar, text="🗑 Delete Selected", bg="#FFEBEE", fg=COLORS["danger"], relief="flat", font=("Arial", 9),
-                  command=self.delete_selected).pack(side="right", padx=5)
-        
-        tk.Button(action_bar, text="✎ Edit Selected", bg="#E3F2FD", fg="#1976D2", relief="flat", font=("Arial", 9),
-                  command=self.edit_selected).pack(side="right")
-
-        # Treeview Setup
         columns = ("id", "name", "category", "qty", "status")
-        self.tree = ttk.Treeview(table_card, columns=columns, show="headings", selectmode="browse")
+        self.tree_inv = ttk.Treeview(self.tab_inventory, columns=columns, show="headings")
         
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(table_card, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        for col in columns: self.tree_inv.heading(col, text=col.title())
+        self.tree_inv.column("id", width=80)
+        self.tree_inv.column("qty", width=50)
         
-        scrollbar.pack(side="right", fill="y")
-        self.tree.pack(fill="both", expand=True)
+        self.tree_inv.pack(fill="both", expand=True)
+        self.refresh_inventory()
 
-        # Define Headings
-        self.tree.heading("id", text="Equipment ID")
-        self.tree.heading("name", text="Name")
-        self.tree.heading("category", text="Category") # Not in mock DB yet, but good to have col
-        self.tree.heading("qty", text="Qty")
-        self.tree.heading("status", text="Status")
+        btn_row = tk.Frame(self.tab_inventory, bg="white")
+        btn_row.pack(fill="x", pady=10)
+        tk.Button(btn_row, text="Edit Selected", bg="#E3F2FD", relief="flat", command=self.edit_selected).pack(side="right")
+        tk.Button(btn_row, text="Delete Selected", bg="#FFEBEE", fg="red", relief="flat", command=self.delete_selected).pack(side="right", padx=10)
 
-        # Define Columns
-        self.tree.column("id", width=100)
-        self.tree.column("name", width=250)
-        self.tree.column("category", width=150)
-        self.tree.column("qty", width=50, anchor="center")
-        self.tree.column("status", width=100)
-
-        # Bind Double Click to Edit
-        self.tree.bind("<Double-1>", lambda e: self.edit_selected())
-
-        # Load Initial Data
-        self.refresh_table()
-
-    # =================================================================
-    # LOGIC FUNCTIONS
-    # =================================================================
-    def refresh_table(self):
-        """Clears and reloads the table based on filters"""
-        # Clear existing
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        search_term = self.search_var.get().lower()
-        status_filter = self.filter_cb.get()
-
-        # Loop through Mock DB
-        for name, details in INVENTORY_DB.items():
-            # Filter Logic
-            matches_search = search_term in name.lower() or search_term in details['id'].lower()
-            matches_status = status_filter == "All" or status_filter == details['status']
-
-            if matches_search and matches_status:
-                # Insert row
-                # Note: Category is hardcoded as 'General' since it's not in mock_db yet
-                self.tree.insert("", "end", values=(
-                    details['id'], 
-                    name, 
-                    "General", 
-                    details['qty'], 
-                    details['status']
-                ))
-
-    def on_search_change(self, *args):
-        self.refresh_table()
-
-    def delete_selected(self):
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showwarning("Warning", "Please select an item to delete.")
-            return
+    def refresh_inventory(self, *args):
+        for row in self.tree_inv.get_children(): self.tree_inv.delete(row)
+        term = self.search_var.get().lower()
         
-        # Get Item Name from the selected row
-        item_values = self.tree.item(selected[0])['values']
-        item_name = item_values[1] # Column 1 is Name
-
-        # Confirm Dialog
-        confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{item_name}'?")
-        if confirm:
-            # In real app: Database delete query here
-            self.tree.delete(selected[0])
-            messagebox.showinfo("Deleted", f"{item_name} has been removed.")
+        for name, d in INVENTORY_DB.items():
+            if term in name.lower() or term in d['id'].lower():
+                self.tree_inv.insert("", "end", values=(d['id'], name, "General", d['qty'], d['status']))
 
     def edit_selected(self):
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showwarning("Warning", "Please select an item to edit.")
-            return
+        messagebox.showinfo("Edit", "Edit feature ready.")
+
+    def delete_selected(self):
+        sel = self.tree_inv.selection()
+        if sel:
+            self.tree_inv.delete(sel[0])
+            messagebox.showinfo("Deleted", "Item removed.")
+
+    def build_returns_tab(self):
+        tk.Label(self.tab_returns, text="History of returned items and their condition checks.", 
+                 bg="white", fg="#777", font=("Arial", 10, "italic")).pack(anchor="w", pady=(0, 10))
+
+        columns = ("id", "item", "borrower", "date", "condition", "remarks")
+        self.tree_ret = ttk.Treeview(self.tab_returns, columns=columns, show="headings")
+
+        self.tree_ret.heading("id", text="Return ID")
+        self.tree_ret.heading("item", text="Item Name")
+        self.tree_ret.heading("borrower", text="Returned By")
+        self.tree_ret.heading("date", text="Date")
+        self.tree_ret.heading("condition", text="Condition")
+        self.tree_ret.heading("remarks", text="Remarks / Notes")
+
+        self.tree_ret.column("id", width=80)
+        self.tree_ret.column("date", width=100)
+        self.tree_ret.column("condition", width=120)
+        self.tree_ret.column("remarks", width=250)
+
+        self.tree_ret.pack(fill="both", expand=True)
+
+        self.refresh_returns()
         
-        item_values = self.tree.item(selected[0])['values']
-        # Open Edit Popup (Future implementation)
-        messagebox.showinfo("Edit Equipment", f"Opening edit form for: {item_values[1]}\n(ID: {item_values[0]})")
+        tk.Button(self.tab_returns, text="↻ Refresh Log", bg="white", fg=COLORS["primary_green"], 
+                  relief="solid", bd=1, command=self.refresh_returns).pack(pady=10, anchor="e")
+
+    def refresh_returns(self):
+        for row in self.tree_ret.get_children(): self.tree_ret.delete(row)
+        
+        for log in RETURN_HISTORY:
+            tag = "damage" if log["condition"] != "Good" else "good"
+            self.tree_ret.insert("", "end", values=(
+                log['id'], log['item'], log['borrower'], log['date'], log['condition'], log['remarks']
+            ), tags=(tag,))
+        
+        self.tree_ret.tag_configure("damage", foreground="red")
+        self.tree_ret.tag_configure("good", foreground="green")

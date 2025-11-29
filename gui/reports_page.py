@@ -10,26 +10,28 @@ class ReportsPage(tk.Frame):
         self.build_ui()
 
     def build_ui(self):
-        # =================================================================
-        # 1. TOP NAVIGATION BAR
-        # =================================================================
+        # --- NAV BAR ---
         nav_bar = tk.Frame(self, bg="white", height=60, padx=20)
         nav_bar.pack(side="top", fill="x", pady=(0, 2))
 
         tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"),
                  fg=COLORS["primary_green"], bg="white").pack(side="left", pady=15)
 
-        # Navigation Buttons
-        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports"]
+        # === FIXED NAVIGATION LOGIC ===
+        nav_items = ["Dashboard", "Equipment", "Borrow", "Reports", "Profile"]
         for item in nav_items:
             if item == "Dashboard":
                 cmd = self.controller.show_dashboard
+            elif item == "Equipment":
+                cmd = self.controller.show_equipment_page
             elif item == "Borrow":
                 cmd = self.controller.show_borrow_page
             elif item == "Reports":
-                cmd = None # We are here
+                cmd = None # Already here
+            elif item == "Profile":
+                cmd = self.controller.show_profile_page
             else:
-                cmd = lambda x=item: print(f"Clicked {x}")
+                cmd = None
 
             # Active Styling
             color = COLORS["primary_green"] if item == "Reports" else "#555"
@@ -39,6 +41,8 @@ class ReportsPage(tk.Frame):
                       relief="flat", font=font_style, command=cmd
             ).pack(side="right", padx=10, pady=15)
 
+        # ... (Keep the rest of your Reports Page code) ...
+        # COPY THE REST OF YOUR REPORTS PAGE CODE HERE (Main content, table, etc)
         # =================================================================
         # 2. MAIN CONTENT AREA
         # =================================================================
