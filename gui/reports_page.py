@@ -1,39 +1,48 @@
 # gui/reports_page.py
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
+import csv
+from datetime import datetime, timedelta
 from utils.colors import COLORS
+# FIX: Removed circular import here
+
+from database.reports_db import (
+    get_borrowing_history, get_damage_reports, 
+    get_overdue_items, get_inventory_status,
+    get_analytics_chart_data
+)
 
 class ReportsPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg=COLORS["bg_light"])
         self.controller = controller
+        self.current_data = []
+        self.current_columns = []
         self.build_ui()
+        self.generate_report()
 
     def build_ui(self):
         # --- NAV BAR ---
         nav_bar = tk.Frame(self, bg="white", height=60, padx=20)
         nav_bar.pack(side="top", fill="x", pady=(0, 2))
 
-        tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"),
-                 fg=COLORS["primary_green"], bg="white").pack(side="left", pady=15)
+        # --- LOGO INTEGRATION ---
+        if self.controller.logo_image:
+            tk.Label(nav_bar, image=self.controller.logo_image, bg="white").pack(side="left", pady=10, padx=5)
+        else:
+            tk.Label(nav_bar, text="TRACKLAB", font=("Arial", 16, "bold"),
+                     fg=COLORS["primary_green"], bg="white").pack(side="left", pady=15)
+        # ------------------------
 
         # === FIXED NAVIGATION LOGIC ===
         nav_items = ["Dashboard", "Equipment", "Borrow", "Reports", "Profile"]
         for item in nav_items:
-            if item == "Dashboard":
-                cmd = self.controller.show_dashboard
-            elif item == "Equipment":
-                cmd = self.controller.show_equipment_page
-            elif item == "Borrow":
-                cmd = self.controller.show_borrow_page
-            elif item == "Reports":
-                cmd = None # Already here
-            elif item == "Profile":
-                cmd = self.controller.show_profile_page
-            else:
-                cmd = None
+            if item == "Dashboard": cmd = self.controller.show_dashboard
+            elif item == "Equipment": cmd = self.controller.show_equipment_page
+            elif item == "Borrow": cmd = self.controller.show_borrow_page
+            elif item == "Reports": cmd = None
+            elif item == "Profile": cmd = self.controller.show_profile_page
 
-            # Active Styling
             color = COLORS["primary_green"] if item == "Reports" else "#555"
             font_style = ("Arial", 10, "bold") if item == "Reports" else ("Arial", 10)
 
@@ -41,161 +50,183 @@ class ReportsPage(tk.Frame):
                       relief="flat", font=font_style, command=cmd
             ).pack(side="right", padx=10, pady=15)
 
-        # ... (Keep the rest of your Reports Page code) ...
-        # COPY THE REST OF YOUR REPORTS PAGE CODE HERE (Main content, table, etc)
-        # =================================================================
-        # 2. MAIN CONTENT AREA
-        # =================================================================
-        self.rowconfigure(1, weight=1)
-        self.columnconfigure(0, weight=1)
+        content = tk.Frame(self, bg=COLORS["bg_light"], padx=20, pady=20)
+        content.pack(fill="both", expand=True)
 
-        content_frame = tk.Frame(self, bg=COLORS["bg_light"], padx=20, pady=20)
-        content_frame.pack(fill="both", expand=True)
-
-        # Header
-        tk.Label(content_frame, text="Reports & Analytics", font=("Arial", 22, "bold"),
+        tk.Label(content, text="Reports & Analytics", font=("Arial", 22, "bold"),
                  bg=COLORS["bg_light"], fg=COLORS["text_dark"]).pack(anchor="w", pady=(0, 15))
 
-        # ---------------------------------------------------------
-        # SECTION A: CONTROL PANEL (Date & Type)
-        # ---------------------------------------------------------
-        controls_card = tk.Frame(content_frame, bg="white", padx=20, pady=20)
-        controls_card.pack(fill="x", pady=(0, 15))
-        controls_card.config(highlightbackground="#E0E0E0", highlightthickness=1)
-
-        controls_card.columnconfigure(0, weight=0) # Date
-        controls_card.columnconfigure(1, weight=0) # Type
-        controls_card.columnconfigure(2, weight=1) # Spacer
-        controls_card.columnconfigure(3, weight=0) # Buttons
-
-        # Date Range Picker
-        tk.Label(controls_card, text="Date Range:", bg="white", font=("Arial", 9, "bold"), fg="#555").grid(row=0, column=0, sticky="w", padx=10)
+        # 1. CONTROLS
+        controls = tk.Frame(content, bg="white", padx=20, pady=20)
+        controls.pack(fill="x", pady=(0, 15))
         
-        date_frame = tk.Frame(controls_card, bg="white")
-        date_frame.grid(row=1, column=0, sticky="w", padx=10, pady=(5,0))
+        tk.Label(controls, text="From:", bg="white", font=("Arial", 9, "bold")).pack(side="left")
+        self.date_from = tk.Entry(controls, width=12, relief="solid", bd=1)
+        self.date_from.pack(side="left", padx=5)
+        start_def = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        self.date_from.insert(0, start_def)
+
+        tk.Label(controls, text="To:", bg="white", font=("Arial", 9, "bold")).pack(side="left", padx=(10,0))
+        self.date_to = tk.Entry(controls, width=12, relief="solid", bd=1)
+        self.date_to.pack(side="left", padx=5)
+        self.date_to.insert(0, datetime.now().strftime("%Y-%m-%d"))
+
+        tk.Label(controls, text="Report Type:", bg="white", font=("Arial", 9, "bold")).pack(side="left", padx=(20,0))
+        self.type_cb = ttk.Combobox(controls, state="readonly", width=20,
+                                    values=["Borrowing History", "Damage Reports", "Overdue Items", "Current Inventory"])
+        self.type_cb.current(0)
+        self.type_cb.pack(side="left", padx=5)
+
+        tk.Button(controls, text="Generate Report", bg=COLORS["primary_green"], fg="white",
+                  font=("Arial", 10, "bold"), padx=15, pady=5, relief="flat", cursor="hand2",
+                  command=self.generate_report).pack(side="left", padx=20)
+
+        # 2. SPLIT VIEW (Chart & Table)
+        split = tk.Frame(content, bg=COLORS["bg_light"])
+        split.pack(fill="both", expand=True)
+        split.columnconfigure(0, weight=1)
+        split.columnconfigure(1, weight=1)
+
+        chart_frame = tk.Frame(split, bg="white", padx=10, pady=10)
+        chart_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        tk.Label(chart_frame, text="Activity Trends (Daily Usage)", font=("Arial", 12, "bold"), bg="white", fg="#555").pack(anchor="w")
         
-        self.date_from = ttk.Entry(date_frame, width=12)
-        self.date_from.insert(0, "2025-01-01")
-        self.date_from.pack(side="left")
+        self.chart_canvas = tk.Canvas(chart_frame, bg="white", height=250, highlightthickness=0)
+        self.chart_canvas.pack(fill="both", expand=True, pady=10)
+
+        table_frame = tk.Frame(split, bg="white", padx=10, pady=10)
+        table_frame.grid(row=0, column=1, sticky="nsew")
         
-        tk.Label(date_frame, text=" to ", bg="white").pack(side="left")
+        t_head = tk.Frame(table_frame, bg="white")
+        t_head.pack(fill="x", pady=(0, 10))
+        self.table_title = tk.Label(t_head, text="Data Preview", font=("Arial", 12, "bold"), bg="white", fg="#555")
+        self.table_title.pack(side="left")
         
-        self.date_to = ttk.Entry(date_frame, width=12)
-        self.date_to.insert(0, "2025-12-31")
-        self.date_to.pack(side="left")
+        tk.Button(t_head, text="⬇ Export Excel (CSV)", bg="#4A90E2", fg="white", 
+                  relief="flat", font=("Arial", 9, "bold"), cursor="hand2",
+                  command=self.export_csv).pack(side="right")
 
-        # Report Type Dropdown
-        tk.Label(controls_card, text="Report Type:", bg="white", font=("Arial", 9, "bold"), fg="#555").grid(row=0, column=1, sticky="w", padx=20)
+        self.tree_frame = tk.Frame(table_frame, bg="white")
+        self.tree_frame.pack(fill="both", expand=True)
         
-        report_types = ["Borrowing History", "Equipment Status", "Damage Reports", "Overdue Items"]
-        self.report_cb = ttk.Combobox(controls_card, values=report_types, state="readonly", width=25)
-        self.report_cb.current(0)
-        self.report_cb.grid(row=1, column=1, sticky="w", padx=20, pady=(5,0))
+        self.create_tree([]) 
 
-        # Generate Button
-        tk.Button(controls_card, text="Generate Report", bg=COLORS["primary_green"], fg="white",
-                  font=("Arial", 10, "bold"), relief="flat", padx=20, pady=5,
-                  command=self.generate_report).grid(row=1, column=3, sticky="e")
-
-        # ---------------------------------------------------------
-        # SECTION B: VISUALS & DATA (Split Layout)
-        # ---------------------------------------------------------
-        split_frame = tk.Frame(content_frame, bg=COLORS["bg_light"])
-        split_frame.pack(fill="both", expand=True)
-        split_frame.columnconfigure(0, weight=1) # Chart
-        split_frame.columnconfigure(1, weight=1) # Table
-
-        # --- LEFT: CHART AREA ---
-        chart_card = tk.Frame(split_frame, bg="white", padx=20, pady=20)
-        chart_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        chart_card.config(highlightbackground="#E0E0E0", highlightthickness=1)
-
-        tk.Label(chart_card, text="Usage Trends (Visual)", font=("Arial", 12, "bold"), 
-                 bg="white", fg=COLORS["primary_green"]).pack(anchor="w", pady=(0, 10))
-
-        self.chart_canvas = tk.Canvas(chart_card, bg="white", height=200, highlightthickness=0)
-        self.chart_canvas.pack(fill="both", expand=True)
-        self.draw_mock_chart()
-
-        # --- RIGHT: DAMAGE / DATA TABLE ---
-        table_card = tk.Frame(split_frame, bg="white", padx=20, pady=20)
-        table_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
-        table_card.config(highlightbackground="#E0E0E0", highlightthickness=1)
-
-        header_row = tk.Frame(table_card, bg="white")
-        header_row.pack(fill="x", pady=(0, 10))
+    def create_tree(self, columns):
+        for widget in self.tree_frame.winfo_children(): widget.destroy()
         
-        tk.Label(header_row, text="Damage / Status Tracking", font=("Arial", 12, "bold"), 
-                 bg="white", fg=COLORS["primary_green"]).pack(side="left")
+        if not columns:
+            tk.Label(self.tree_frame, text="Select a report type and click Generate.", bg="white", fg="#999").pack(pady=50)
+            return
+
+        self.current_columns = columns
+        scroll_y = ttk.Scrollbar(self.tree_frame)
+        scroll_y.pack(side="right", fill="y")
+        scroll_x = ttk.Scrollbar(self.tree_frame, orient="horizontal")
+        scroll_x.pack(side="bottom", fill="x")
+
+        self.tree = ttk.Treeview(self.tree_frame, columns=columns, show="headings",
+                                 yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
         
-        tk.Button(header_row, text="+ Add Damage Report", bg="#FF9800", fg="white",
-                  relief="flat", font=("Arial", 8, "bold"), padx=10,
-                  command=lambda: messagebox.showinfo("Info", "Open Damage Popup")).pack(side="right")
+        scroll_y.config(command=self.tree.yview)
+        scroll_x.config(command=self.tree.xview)
 
-        columns = ("name", "date", "severity", "responsible", "status")
-        tree_scroll = ttk.Scrollbar(table_card)
-        tree_scroll.pack(side="right", fill="y")
-
-        self.tree = ttk.Treeview(table_card, columns=columns, show="headings", yscrollcommand=tree_scroll.set)
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=100, anchor="w")
+        
         self.tree.pack(fill="both", expand=True)
-        tree_scroll.config(command=self.tree.yview)
-
-        self.tree.heading("name", text="Equipment Name")
-        self.tree.heading("date", text="Date")
-        self.tree.heading("severity", text="Severity")
-        self.tree.heading("responsible", text="Responsible")
-        self.tree.heading("status", text="Status")
-
-        self.tree.column("name", width=120)
-        self.tree.column("date", width=80)
-        self.tree.column("severity", width=80)
-        self.tree.column("responsible", width=100)
-        self.tree.column("status", width=80)
-
-        self.tree.insert("", "end", values=("Microscope A", "2025-02-10", "Minor", "John Doe", "Repair"))
-        self.tree.insert("", "end", values=("Beaker 500ml", "2025-02-12", "Major", "Jane Smith", "Replace"))
-        self.tree.insert("", "end", values=("Extension Cord", "2025-02-14", "Minor", "Mark Lee", "Repair"))
-
-        # ---------------------------------------------------------
-        # SECTION C: FOOTER ACTIONS
-        # ---------------------------------------------------------
-        footer = tk.Frame(content_frame, bg=COLORS["bg_light"], pady=15)
-        footer.pack(fill="x")
-
-        tk.Button(footer, text="Export PDF", bg="#E74C3C", fg="white", 
-                  font=("Arial", 9, "bold"), relief="flat", padx=20, pady=8).pack(side="right", padx=(10, 0))
-        
-        tk.Button(footer, text="Export Excel", bg="#4A90E2", fg="white", 
-                  font=("Arial", 9, "bold"), relief="flat", padx=20, pady=8).pack(side="right")
-
-    # =================================================================
-    # HELPER: DRAW MOCK CHART
-    # =================================================================
-    def draw_mock_chart(self):
-        """Draws a simple line graph to simulate analytics"""
-        self.chart_canvas.update()
-        w = self.chart_canvas.winfo_width()
-        h = self.chart_canvas.winfo_height()
-        
-        # Draw Axes
-        self.chart_canvas.create_line(30, h-30, w-10, h-30, fill="#999", width=2) # X Axis
-        self.chart_canvas.create_line(30, h-30, 30, 10, fill="#999", width=2)    # Y Axis
-
-        # Mock Data Points
-        points = [
-            (30, h-30), (80, h-60), (130, h-40), (180, h-90), 
-            (230, h-70), (280, h-120), (330, h-100), (380, h-150)
-        ]
-        
-        # Draw Line & Dots
-        for i in range(len(points)-1):
-            x1, y1 = points[i]
-            x2, y2 = points[i+1]
-            self.chart_canvas.create_line(x1, y1, x2, y2, fill=COLORS["primary_green"], width=3, smooth=True)
-            
-        for x, y in points:
-            self.chart_canvas.create_oval(x-3, y-3, x+3, y+3, fill=COLORS["primary_green"], outline="white")
 
     def generate_report(self):
-        rtype = self.report_cb.get()
-        messagebox.showinfo("Report Generated", f"Generating report for: {rtype}\nFrom {self.date_from.get()} to {self.date_to.get()}")
+        report_type = self.type_cb.get()
+        start = self.date_from.get()
+        end = self.date_to.get()
+
+        self.draw_chart(start, end)
+        self.current_data = []
+        data = []
+        
+        if report_type == "Borrowing History":
+            data = get_borrowing_history(start, end)
+            cols = ["Item Name", "Borrower", "Date Borrowed", "Due Date", "Status"]
+            db_keys = ["item_name", "borrower", "date_borrowed", "due_date", "status"]
+            
+        elif report_type == "Damage Reports":
+            data = get_damage_reports(start, end)
+            cols = ["Item Name", "Reported By", "Date Returned", "Severity", "Remarks"]
+            db_keys = ["item_name", "reported_by", "date_returned", "severity", "remarks"]
+            
+        elif report_type == "Overdue Items":
+            data = get_overdue_items()
+            cols = ["Item Name", "Borrower", "Date Borrowed", "Due Date", "Days Overdue"]
+            db_keys = ["item_name", "borrower", "date_borrowed", "due_date", "days_overdue"]
+            
+        elif report_type == "Current Inventory":
+            data = get_inventory_status()
+            cols = ["Code", "Name", "Category", "Quantity", "Status"]
+            db_keys = ["code", "name", "category", "quantity", "status"]
+        
+        else:
+            return
+
+        self.table_title.config(text=f"{report_type} ({len(data)} Records)")
+        self.create_tree(cols)
+        
+        if not data:
+            pass 
+        
+        for row in data:
+            values = [str(row.get(k, "")) for k in db_keys]
+            self.tree.insert("", "end", values=values)
+            self.current_data.append(values)
+
+    def draw_chart(self, start, end):
+        self.chart_canvas.delete("all")
+        data = get_analytics_chart_data(start, end)
+        
+        if not data:
+            self.chart_canvas.create_text(200, 100, text="No activity data for selected period.", fill="#999")
+            return
+
+        w, h, margin = 400, 200, 30
+        counts = [d['count'] for d in data]
+        max_val = max(counts) if counts else 1
+        num_points = len(data)
+        x_step = (w - 2 * margin) / max(1, num_points - 1)
+        
+        self.chart_canvas.create_line(margin, h-margin, w-margin, h-margin, fill="#999", width=2)
+        self.chart_canvas.create_line(margin, h-margin, margin, margin, fill="#999", width=2)
+
+        prev_x, prev_y = None, None
+        
+        for i, point in enumerate(data):
+            x = margin + (i * x_step)
+            y = (h - margin) - ((point['count'] / max_val) * (h - 2 * margin))
+            
+            if prev_x is not None:
+                self.chart_canvas.create_line(prev_x, prev_y, x, y, fill=COLORS["primary_green"], width=2)
+            
+            self.chart_canvas.create_oval(x-3, y-3, x+3, y+3, fill=COLORS["primary_green"], outline="white")
+            
+            if num_points < 10 or i % 3 == 0:
+                day_lbl = point['day'][5:]
+                self.chart_canvas.create_text(x, h-margin+10, text=day_lbl, font=("Arial", 7), angle=45)
+            
+            self.chart_canvas.create_text(x, y-10, text=str(point['count']), font=("Arial", 8, "bold"), fill="#555")
+
+            prev_x, prev_y = x, y
+
+    def export_csv(self):
+        if not self.current_data:
+            messagebox.showwarning("Warning", "No data to export. Generate a report first.")
+            return
+            
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
+        if path:
+            try:
+                with open(path, mode="w", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(self.current_columns)
+                    writer.writerows(self.current_data)
+                messagebox.showinfo("Success", "Export successful!")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export: {e}")
